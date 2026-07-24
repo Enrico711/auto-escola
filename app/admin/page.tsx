@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Users, Plus, LogOut, Search, ChevronRight, ChevronLeft,
-  Upload, Trash2, FileText, X, Loader2, Copy, Check,
+  Upload, Trash2, FileText, X, Loader2, Copy, Check, CalendarDays,
 } from "lucide-react";
 
 const PHASES = [
@@ -27,18 +27,31 @@ export default function AdminPage() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
+  const [serverError, setServerError] = useState("");
+  const [tab, setTab] = useState("alunos");
 
   async function loadStudents() {
     setLoading(true);
-    const res = await fetch("/api/admin/students");
-    if (res.status === 401) {
-      setAuthed(false);
-      setLoading(false);
-      return;
+    setServerError("");
+    try {
+      const res = await fetch("/api/admin/students");
+      if (res.status === 401) {
+        setAuthed(false);
+        setLoading(false);
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAuthed(true);
+        setServerError(data.error || "Erro ao carregar as matrículas.");
+        setLoading(false);
+        return;
+      }
+      setStudents(data.students || []);
+      setAuthed(true);
+    } catch {
+      setServerError("Não foi possível conectar ao servidor. Tente recarregar a página.");
     }
-    const data = await res.json();
-    setStudents(data.students || []);
-    setAuthed(true);
     setLoading(false);
   }
 
@@ -50,11 +63,17 @@ export default function AdminPage() {
   async function handleLogin(e: any) {
     e.preventDefault();
     setLoginError("");
-    const res = await fetch("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
+    let res;
+    try {
+      res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+    } catch {
+      setLoginError("Não foi possível conectar ao servidor.");
+      return;
+    }
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       setLoginError(d.error || "Erro ao entrar");
@@ -167,6 +186,33 @@ export default function AdminPage() {
           </button>
         </div>
 
+        <div className="mt-6 flex gap-2">
+          <button
+            onClick={() => setTab("alunos")}
+            className={`rounded-full px-5 py-2.5 font-display text-sm font-semibold transition ${
+              tab === "alunos"
+                ? "bg-charcoal text-white"
+                : "bg-white text-charcoal/60 border border-charcoal/10 hover:text-ink"
+            }`}
+          >
+            Matrículas
+          </button>
+          <button
+            onClick={() => setTab("agenda")}
+            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 font-display text-sm font-semibold transition ${
+              tab === "agenda"
+                ? "bg-charcoal text-white"
+                : "bg-white text-charcoal/60 border border-charcoal/10 hover:text-ink"
+            }`}
+          >
+            <CalendarDays className="h-4 w-4" /> Etapas
+          </button>
+        </div>
+
+        {tab === "agenda" && <AgendaView />}
+
+        {tab === "alunos" && (
+        <>
         <div className="relative mt-6">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-charcoal/40" />
           <input
@@ -176,6 +222,12 @@ export default function AdminPage() {
             className="w-full rounded-full border border-charcoal/10 bg-white py-3 pl-11 pr-4 text-sm outline-none focus:border-charcoal/30"
           />
         </div>
+
+        {serverError && (
+          <div className="mt-6 rounded-xl2 border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {serverError}
+          </div>
+        )}
 
         {loading ? (
           <div className="mt-12 flex justify-center">
@@ -214,6 +266,8 @@ export default function AdminPage() {
               </button>
             ))}
           </div>
+        )}
+        </>
         )}
       </main>
 
@@ -478,6 +532,13 @@ function StudentDrawer({ student, onClose, onUpdated, onDeleted }: any) {
             <Info label="Categoria" value={student.category} />
             <Info label="Endereço" value={student.address} spanFull />
             {student.notes && <Info label="Observações" value={student.notes} spanFull />}
+            {student.appointment_date && (
+              <Info
+                label="Agendamento do aluno"
+                value={`${formatBR(student.appointment_date)}${student.appointment_time ? " às " + student.appointment_time : ""} — ${PHASES[student.appointment_phase] || ""}`}
+                spanFull
+              />
+            )}
           </div>
 
           <div>
@@ -606,6 +667,365 @@ function Info({ label, value, spanFull }: any) {
     <div className={spanFull ? "col-span-2" : ""}>
       <p className="text-xs font-semibold text-charcoal/45">{label}</p>
       <p className="mt-0.5 text-sm text-ink">{value || "—"}</p>
+    </div>
+  );
+}
+
+
+function formatBR(d: string) {
+  const [y, m, day] = d.split("-");
+  return `${day}/${m}/${y}`;
+}
+
+function AgendaView() {
+  const [phase, setPhase] = useState(0);
+  const [date, setDate] = useState("");
+  const [slotTime, setSlotTime] = useState("");
+  const [slots, setSlots] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any[]>([]);
+  const [items, setItems] = useState<any[]>([]);
+  const [form, setForm] = useState({ address: "", instructions: "", link: "" });
+  const [itemForm, setItemForm] = useState({ label: "", address: "", price: "" });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const [rs, rt, ri] = await Promise.all([
+        fetch("/api/admin/availability"),
+        fetch("/api/admin/phase-settings"),
+        fetch("/api/admin/phase-items"),
+      ]);
+      const ds = await rs.json().catch(() => ({}));
+      const dt = await rt.json().catch(() => ({}));
+      const di = await ri.json().catch(() => ({}));
+      if (!rs.ok || !rt.ok || !ri.ok) {
+        setError(ds.error || dt.error || di.error || "Erro ao carregar.");
+      } else {
+        setSlots(ds.slots || []);
+        setSettings(dt.settings || []);
+        setItems(di.items || []);
+      }
+    } catch {
+      setError("Não foi possível conectar ao servidor.");
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  useEffect(() => {
+    const cur = settings.find((x: any) => x.phase === phase);
+    setForm({
+      address: cur?.address || "",
+      instructions: cur?.instructions || "",
+      link: cur?.link || "",
+    });
+    setSavedMsg("");
+  }, [phase, settings]);
+
+  async function saveSettings(e: any) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    const res = await fetch("/api/admin/phase-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phase, ...form }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) {
+      setError(data.error || "Erro ao salvar.");
+      return;
+    }
+    setSettings((prev) => {
+      const others = prev.filter((x: any) => x.phase !== phase);
+      return [...others, data.setting];
+    });
+    setSavedMsg("Informações salvas!");
+    setTimeout(() => setSavedMsg(""), 2500);
+  }
+
+  async function addItem(e: any) {
+    e.preventDefault();
+    if (!itemForm.label.trim()) return;
+    const res = await fetch("/api/admin/phase-items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phase, ...itemForm }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || "Erro ao adicionar.");
+      return;
+    }
+    setItems((prev) => [...prev, data.item]);
+    setItemForm({ label: "", address: "", price: "" });
+  }
+
+  async function removeItem(id: string) {
+    if (!confirm("Remover este item?")) return;
+    await fetch(`/api/admin/phase-items?id=${id}`, { method: "DELETE" });
+    setItems((prev) => prev.filter((i: any) => i.id !== id));
+  }
+
+  async function addDate(e: any) {
+    e.preventDefault();
+    if (!date) return;
+    setSaving(true);
+    setError("");
+    const res = await fetch("/api/admin/availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phase, date, slot_time: slotTime }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) {
+      setError(data.error || "Erro ao salvar.");
+      return;
+    }
+    setSlotTime("");
+    load();
+  }
+
+  async function removeSlot(id: string) {
+    if (!confirm("Remover essa data da agenda?")) return;
+    await fetch(`/api/admin/availability?id=${id}`, { method: "DELETE" });
+    load();
+  }
+
+  const phaseSlots = slots.filter((s: any) => s.phase === phase);
+  const phaseItems = items.filter((i: any) => i.phase === phase);
+
+  return (
+    <div className="mt-6 space-y-6">
+      <div className="rounded-xl3 border border-charcoal/10 bg-white p-6 shadow-card">
+        <h2 className="font-display text-base font-bold text-ink">
+          Configuração das etapas
+        </h2>
+        <p className="mt-1 text-sm text-charcoal/55">
+          Escolha uma etapa e defina o que o aluno vê ao acompanhar a matrícula:
+          instruções, endereço, valores e dias disponíveis.
+        </p>
+
+        <select
+          value={phase}
+          onChange={(e) => setPhase(Number(e.target.value))}
+          className="mt-5 w-full rounded-xl border border-charcoal/15 px-3 py-3 text-sm font-semibold outline-none"
+        >
+          {PHASES.map((p, i) => (
+            <option key={p} value={i}>
+              {i + 1}. {p}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {error && (
+        <div className="rounded-xl2 border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <form
+        onSubmit={saveSettings}
+        className="rounded-xl3 border border-charcoal/10 bg-white p-6 shadow-card"
+      >
+        <h3 className="font-display text-sm font-bold text-ink">
+          Informações para o aluno — {PHASES[phase]}
+        </h3>
+
+        <div className="mt-4 space-y-4">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-charcoal/60">
+              Instruções (o que o aluno precisa fazer)
+            </span>
+            <textarea
+              value={form.instructions}
+              onChange={(e) => setForm({ ...form, instructions: e.target.value })}
+              className="min-h-[80px] w-full rounded-xl border border-charcoal/15 px-3 py-2.5 text-sm outline-none"
+              placeholder="Ex: O curso teórico é feito online, pela plataforma CNH do Brasil."
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-charcoal/60">
+              Endereço (onde o aluno deve comparecer)
+            </span>
+            <input
+              value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              className="w-full rounded-xl border border-charcoal/15 px-3 py-2.5 text-sm outline-none"
+              placeholder="Ex: Rua Exemplo, 123 — Campeche, Florianópolis"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-charcoal/60">
+              Link (opcional)
+            </span>
+            <input
+              value={form.link}
+              onChange={(e) => setForm({ ...form, link: e.target.value })}
+              className="w-full rounded-xl border border-charcoal/15 px-3 py-2.5 text-sm outline-none"
+              placeholder="Ex: https://cnhdobrasil.com.br"
+            />
+          </label>
+        </div>
+
+        <div className="mt-5 flex items-center gap-3">
+          <button
+            disabled={saving}
+            className="rounded-full bg-signal px-6 py-3 font-display text-sm font-bold text-charcoal transition hover:bg-signal-dark disabled:opacity-50"
+          >
+            {saving ? "Salvando..." : "Salvar informações"}
+          </button>
+          {savedMsg && (
+            <span className="text-sm font-semibold text-green-600">{savedMsg}</span>
+          )}
+        </div>
+      </form>
+
+      <div className="rounded-xl3 border border-charcoal/10 bg-white p-6 shadow-card">
+        <h3 className="font-display text-sm font-bold text-ink">
+          Locais e valores (opcional)
+        </h3>
+        <p className="mt-1 text-xs text-charcoal/55">
+          Use quando a etapa tem mais de um local ou valor. Ex: exame médico e
+          exame psicológico, cada um com seu endereço e preço.
+        </p>
+
+        <form onSubmit={addItem} className="mt-4 grid gap-3 sm:grid-cols-4">
+          <input
+            value={itemForm.label}
+            onChange={(e) => setItemForm({ ...itemForm, label: e.target.value })}
+            className="rounded-xl border border-charcoal/15 px-3 py-2.5 text-sm outline-none"
+            placeholder="Nome (ex: Exame médico)"
+          />
+          <input
+            value={itemForm.address}
+            onChange={(e) => setItemForm({ ...itemForm, address: e.target.value })}
+            className="rounded-xl border border-charcoal/15 px-3 py-2.5 text-sm outline-none sm:col-span-2"
+            placeholder="Endereço"
+          />
+          <div className="flex gap-2">
+            <input
+              value={itemForm.price}
+              onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })}
+              className="w-full rounded-xl border border-charcoal/15 px-3 py-2.5 text-sm outline-none"
+              placeholder="R$ 000"
+            />
+            <button className="shrink-0 rounded-full bg-charcoal px-4 py-2.5 font-display text-xs font-semibold text-white">
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        </form>
+
+        {phaseItems.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {phaseItems.map((it: any) => (
+              <li
+                key={it.id}
+                className="flex items-center justify-between rounded-xl border border-charcoal/10 px-4 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-ink">
+                    {it.label}
+                    {it.price ? (
+                      <span className="ml-2 rounded-full bg-signal/15 px-2 py-0.5 text-xs font-bold text-signal-deep">
+                        {it.price}
+                      </span>
+                    ) : null}
+                  </p>
+                  {it.address && (
+                    <p className="mt-0.5 truncate text-xs text-charcoal/55">
+                      {it.address}
+                    </p>
+                  )}
+                </div>
+                <button onClick={() => removeItem(it.id)}>
+                  <Trash2 className="h-4 w-4 text-charcoal/40 hover:text-red-500" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="rounded-xl3 border border-charcoal/10 bg-white p-6 shadow-card">
+        <h3 className="font-display text-sm font-bold text-ink">
+          Dias disponíveis — {PHASES[phase]}
+        </h3>
+        <p className="mt-1 text-xs text-charcoal/55">
+          O horário é opcional. Preencha quando a etapa tiver horários
+          específicos (ex: aulas do curso prático).
+        </p>
+
+        <form onSubmit={addDate} className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="rounded-xl border border-charcoal/15 px-3 py-3 text-sm outline-none"
+          />
+          <input
+            type="time"
+            value={slotTime}
+            onChange={(e) => setSlotTime(e.target.value)}
+            className="rounded-xl border border-charcoal/15 px-3 py-3 text-sm outline-none"
+          />
+          <button
+            disabled={saving || !date}
+            className="rounded-full bg-signal px-6 py-3 font-display text-sm font-bold text-charcoal transition hover:bg-signal-dark disabled:opacity-50"
+          >
+            {saving ? "Salvando..." : "Adicionar"}
+          </button>
+        </form>
+
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-charcoal/40" />
+          </div>
+        ) : phaseSlots.length === 0 ? (
+          <p className="mt-4 rounded-xl bg-mist p-4 text-center text-xs text-charcoal/50">
+            Nenhuma data cadastrada para essa etapa ainda.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {phaseSlots.map((s: any) => (
+              <li
+                key={s.id}
+                className="flex items-center justify-between rounded-xl border border-charcoal/10 px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-ink">
+                    {formatBR(s.date)}
+                    {s.slot_time ? ` às ${s.slot_time}` : ""}
+                  </p>
+                  {s.bookings && s.bookings.length > 0 ? (
+                    <p className="mt-0.5 text-xs text-charcoal/55">
+                      Agendados: {s.bookings.join(", ")}
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 text-xs text-charcoal/40">
+                      Ninguém agendado ainda
+                    </p>
+                  )}
+                </div>
+                <button onClick={() => removeSlot(s.id)}>
+                  <Trash2 className="h-4 w-4 text-charcoal/40 hover:text-red-500" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

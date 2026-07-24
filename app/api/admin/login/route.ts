@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { sessionToken } from "@/lib/server";
+import { sessionToken, adminPassword } from "@/lib/server";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const { password } = await req.json();
-  if (!process.env.ADMIN_PASSWORD) {
-    return NextResponse.json({ error: "ADMIN_PASSWORD não configurado no servidor" }, { status: 500 });
+  const body = await req.json().catch(() => ({}));
+  const typed = String(body.password ?? "").trim();
+  const expected = adminPassword();
+
+  if (!expected) {
+    return NextResponse.json(
+      { error: "ADMIN_PASSWORD não configurado no servidor" },
+      { status: 500 }
+    );
   }
-  if (password !== process.env.ADMIN_PASSWORD) {
+  if (typed !== expected) {
     return NextResponse.json({ error: "Senha incorreta" }, { status: 401 });
   }
   cookies().set("sdi_admin", sessionToken(), {
