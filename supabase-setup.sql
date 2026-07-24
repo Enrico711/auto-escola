@@ -64,6 +64,12 @@ create table if not exists phase_items (
   created_at timestamptz default now()
 );
 
+-- Controle financeiro e renovação
+alter table students add column if not exists total_value numeric;
+alter table students add column if not exists installments_total int default 6;
+alter table students add column if not exists installments_paid int default 0;
+alter table students add column if not exists cnh_expiry date;
+
 -- Agendamento escolhido pelo aluno
 alter table students add column if not exists appointment_date date;
 alter table students add column if not exists appointment_phase int;

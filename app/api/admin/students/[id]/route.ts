@@ -24,7 +24,7 @@ export async function PATCH(req: Request, ctx: any) {
   try {
     const body = await req.json().catch(() => ({}));
     const allowed: any = {};
-    for (const k of ["name", "cpf", "phone", "address", "category", "notes", "current_phase"]) {
+    for (const k of ["name", "cpf", "phone", "address", "category", "notes", "current_phase", "total_value", "installments_total", "installments_paid", "cnh_expiry"]) {
       if (body[k] !== undefined) allowed[k] = body[k];
     }
     if (Object.keys(allowed).length === 0) {
