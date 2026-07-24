@@ -41,6 +41,7 @@ export default function Footer() {
             <ul className="mt-3 space-y-2 text-sm text-charcoal/70">
               <li>Campeche, Florianópolis, SC</li>
               <li>(48) 3238-6576</li>
+              <li><a href="/acompanhar" className="underline underline-offset-2 hover:text-ink">Acompanhar matrícula</a></li>
             </ul>
           </div>
         </div>
