@@ -34,7 +34,6 @@ export default function Navbar() {
             { href: "#depoimentos", label: "Alunos" },
             { href: "#faq", label: "Dúvidas" },
             { href: "#contato", label: "Contato" },
-            { href: "/acompanhar", label: "Acompanhar matrícula" },
           ].map((link) => (
             <a
               key={link.href}
@@ -67,7 +66,6 @@ export default function Navbar() {
               { href: "#depoimentos", label: "Alunos" },
               { href: "#faq", label: "Dúvidas" },
               { href: "#contato", label: "Contato" },
-              { href: "/acompanhar", label: "Acompanhar matrícula" },
             ].map((link) => (
               <a
                 key={link.href}
