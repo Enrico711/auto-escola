@@ -66,10 +66,6 @@ export async function POST(req: Request) {
         address: body.address || null,
         category: body.category || null,
         notes: body.notes || null,
-        total_value: body.total_value === "" || body.total_value === undefined ? null : Number(body.total_value),
-        installments_total: body.installments_total ? Number(body.installments_total) : 6,
-        installments_paid: 0,
-        cnh_expiry: body.cnh_expiry || null,
         current_phase: 0,
       })
       .select()
