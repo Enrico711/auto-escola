@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Users, Plus, LogOut, Search, ChevronRight, ChevronLeft,
   Upload, Trash2, FileText, X, Loader2, Copy, Check, CalendarDays,
+  MessageCircle, AlertTriangle, Wallet, ArrowRight, ArrowLeft,
 } from "lucide-react";
 
 const PHASES = [
@@ -29,12 +30,13 @@ export default function AdminPage() {
   const [showForm, setShowForm] = useState(false);
   const [serverError, setServerError] = useState("");
   const [tab, setTab] = useState("alunos");
+  const [phaseFilter, setPhaseFilter] = useState(-1);
 
   async function loadStudents() {
     setLoading(true);
     setServerError("");
     try {
-      const res = await fetch("/api/admin/students");
+      const res = await fetch("/api/admin/students", { cache: "no-store" });
       if (res.status === 401) {
         setAuthed(false);
         setLoading(false);
@@ -92,11 +94,20 @@ export default function AdminPage() {
 
   const filtered = students.filter((s) => {
     const q = query.toLowerCase();
-    return (
+    const matchesQuery =
       s.name?.toLowerCase().includes(q) ||
       s.cpf?.includes(q) ||
-      s.tracking_code?.toLowerCase().includes(q)
-    );
+      s.tracking_code?.toLowerCase().includes(q);
+    const matchesPhase =
+      phaseFilter === -1 || Number(s.current_phase) === phaseFilter;
+    return matchesQuery && matchesPhase;
+  });
+
+  const expiringSoon = students.filter((s) => {
+    if (!s.cnh_expiry) return false;
+    const days =
+      (new Date(s.cnh_expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    return days <= 90;
   });
 
   if (checking) {
@@ -213,7 +224,64 @@ export default function AdminPage() {
 
         {tab === "alunos" && (
         <>
-        <div className="relative mt-6">
+        {expiringSoon.length > 0 && (
+          <div className="mt-6 rounded-xl2 border border-signal/50 bg-signal/10 p-5">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-signal-deep" />
+              <h3 className="font-display text-sm font-bold text-ink">
+                {expiringSoon.length} CNH vencendo nos próximos 90 dias
+              </h3>
+            </div>
+            <p className="mt-1 text-xs text-charcoal/60">
+              Oportunidade de renovação — entre em contato antes do vencimento.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {expiringSoon.map((s: any) => (
+                <button
+                  key={s.id}
+                  onClick={() => setSelected(s)}
+                  className="rounded-full border border-charcoal/15 bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:border-signal"
+                >
+                  {s.name} · {formatBR(s.cnh_expiry)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button
+            onClick={() => setPhaseFilter(-1)}
+            className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+              phaseFilter === -1
+                ? "bg-charcoal text-white"
+                : "border border-charcoal/10 bg-white text-charcoal/60 hover:text-ink"
+            }`}
+          >
+            Todos ({students.length})
+          </button>
+          {PHASES.map((p, i) => {
+            const count = students.filter(
+              (s: any) => Number(s.current_phase) === i
+            ).length;
+            if (count === 0) return null;
+            return (
+              <button
+                key={p}
+                onClick={() => setPhaseFilter(i)}
+                className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                  phaseFilter === i
+                    ? "bg-charcoal text-white"
+                    : "border border-charcoal/10 bg-white text-charcoal/60 hover:text-ink"
+                }`}
+              >
+                {p} ({count})
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="relative mt-4">
           <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-charcoal/40" />
           <input
             value={query}
@@ -303,6 +371,7 @@ export default function AdminPage() {
 function NewStudentModal({ onClose, onCreated }: any) {
   const [form, setForm] = useState({
     name: "", cpf: "", phone: "", address: "", category: "B", notes: "",
+    total_value: "", installments_total: "6", cnh_expiry: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -386,6 +455,35 @@ function NewStudentModal({ onClose, onCreated }: any) {
               ))}
             </select>
           </Field>
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="Valor total (R$)">
+              <input
+                type="number"
+                value={form.total_value}
+                onChange={(e) => setForm({ ...form, total_value: e.target.value })}
+                className="input-base"
+                placeholder="2400"
+              />
+            </Field>
+            <Field label="Nº parcelas">
+              <input
+                type="number"
+                value={form.installments_total}
+                onChange={(e) =>
+                  setForm({ ...form, installments_total: e.target.value })
+                }
+                className="input-base"
+              />
+            </Field>
+            <Field label="CNH vence em">
+              <input
+                type="date"
+                value={form.cnh_expiry}
+                onChange={(e) => setForm({ ...form, cnh_expiry: e.target.value })}
+                className="input-base"
+              />
+            </Field>
+          </div>
           <Field label="Observações">
             <textarea
               value={form.notes}
@@ -440,10 +538,25 @@ function StudentDrawer({ student, onClose, onUpdated, onDeleted }: any) {
   const [label, setLabel] = useState("Identidade");
   const [copied, setCopied] = useState(false);
   const [savingPhase, setSavingPhase] = useState(false);
+  const [savingPay, setSavingPay] = useState(false);
+
+  async function setPaid(n: number) {
+    setSavingPay(true);
+    const res = await fetch(`/api/admin/students/${student.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ installments_paid: n }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSavingPay(false);
+    if (res.ok) onUpdated(data.student);
+  }
 
   async function loadDocs() {
     setDocsLoading(true);
-    const res = await fetch(`/api/admin/students/${student.id}/documents`);
+    const res = await fetch(`/api/admin/students/${student.id}/documents`, {
+      cache: "no-store",
+    });
     const data = await res.json();
     setDocs(data.documents || []);
     setDocsLoading(false);
@@ -528,8 +641,28 @@ function StudentDrawer({ student, onClose, onUpdated, onDeleted }: any) {
         <div className="flex-1 space-y-8 p-6">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <Info label="CPF" value={student.cpf} />
-            <Info label="Telefone" value={student.phone} />
+            <div>
+              <p className="text-xs font-semibold text-charcoal/45">Telefone</p>
+              {student.phone ? (
+                <a
+                  href={`https://wa.me/55${String(student.phone).replace(/\D/g, "")}?text=${encodeURIComponent(
+                    `Olá ${String(student.name).split(" ")[0]}! Aqui é da Auto Escola Sul da Ilha.`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-0.5 inline-flex items-center gap-1.5 text-sm font-semibold text-ink hover:text-signal-deep"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 text-signal-deep" />
+                  {student.phone}
+                </a>
+              ) : (
+                <p className="mt-0.5 text-sm text-ink">—</p>
+              )}
+            </div>
             <Info label="Categoria" value={student.category} />
+            {student.cnh_expiry && (
+              <Info label="CNH vence em" value={formatBR(student.cnh_expiry)} />
+            )}
             <Info label="Endereço" value={student.address} spanFull />
             {student.notes && <Info label="Observações" value={student.notes} spanFull />}
             {student.appointment_date && (
@@ -546,8 +679,26 @@ function StudentDrawer({ student, onClose, onUpdated, onDeleted }: any) {
               Fase atual do processo
             </h3>
             <p className="mt-1 text-xs text-charcoal/50">
-              Clique na fase para atualizar. O aluno vê essa informação ao consultar o código.
+              Use os botões ou clique direto na fase. O aluno vê isso ao consultar o código.
             </p>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                disabled={savingPhase || student.current_phase <= 0}
+                onClick={() => setPhase(student.current_phase - 1)}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-charcoal/15 py-3 font-display text-xs font-semibold text-charcoal/70 transition hover:border-charcoal/35 hover:text-ink disabled:opacity-40"
+              >
+                <ArrowLeft className="h-4 w-4" /> Etapa anterior
+              </button>
+              <button
+                disabled={savingPhase || student.current_phase >= PHASES.length - 1}
+                onClick={() => setPhase(student.current_phase + 1)}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-signal py-3 font-display text-xs font-bold text-charcoal transition hover:bg-signal-dark disabled:opacity-40"
+              >
+                Próxima etapa <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+
             <div className="mt-4 space-y-2">
               {PHASES.map((phase, i) => {
                 const done = i < student.current_phase;
@@ -581,6 +732,78 @@ function StudentDrawer({ student, onClose, onUpdated, onDeleted }: any) {
                 );
               })}
             </div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 text-signal-deep" />
+              <h3 className="font-display text-sm font-bold text-ink">
+                Pagamento
+              </h3>
+            </div>
+            {student.total_value ? (
+              <>
+                <div className="mt-3 flex items-baseline justify-between">
+                  <p className="font-display text-lg font-bold text-ink">
+                    {student.installments_paid || 0} de{" "}
+                    {student.installments_total || 6} parcelas pagas
+                  </p>
+                  <p className="text-xs text-charcoal/55">
+                    Total R$ {Number(student.total_value).toFixed(2)}
+                  </p>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-charcoal/10">
+                  <div
+                    className="h-full rounded-full bg-signal transition-all duration-500"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        ((student.installments_paid || 0) /
+                          (student.installments_total || 6)) *
+                          100
+                      )}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-charcoal/55">
+                  Valor de cada parcela: R${" "}
+                  {(
+                    Number(student.total_value) /
+                    (student.installments_total || 6)
+                  ).toFixed(2)}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    disabled={savingPay || (student.installments_paid || 0) <= 0}
+                    onClick={() => setPaid((student.installments_paid || 0) - 1)}
+                    className="flex-1 rounded-full border border-charcoal/15 py-2.5 text-xs font-semibold text-charcoal/70 transition hover:border-charcoal/35 disabled:opacity-40"
+                  >
+                    Desfazer parcela
+                  </button>
+                  <button
+                    disabled={
+                      savingPay ||
+                      (student.installments_paid || 0) >=
+                        (student.installments_total || 6)
+                    }
+                    onClick={() => setPaid((student.installments_paid || 0) + 1)}
+                    className="flex-1 rounded-full bg-charcoal py-2.5 text-xs font-bold text-white transition hover:bg-charcoal/90 disabled:opacity-40"
+                  >
+                    Registrar pagamento
+                  </button>
+                </div>
+                {(student.installments_paid || 0) >=
+                  (student.installments_total || 6) && (
+                  <p className="mt-3 rounded-xl bg-green-50 p-3 text-xs font-semibold text-green-700">
+                    Pagamento quitado.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-3 rounded-xl bg-mist p-4 text-xs text-charcoal/50">
+                Nenhum valor cadastrado para esta matrícula.
+              </p>
+            )}
           </div>
 
           <div>
@@ -696,9 +919,9 @@ function AgendaView() {
     setError("");
     try {
       const [rs, rt, ri] = await Promise.all([
-        fetch("/api/admin/availability"),
-        fetch("/api/admin/phase-settings"),
-        fetch("/api/admin/phase-items"),
+        fetch("/api/admin/availability", { cache: "no-store" }),
+        fetch("/api/admin/phase-settings", { cache: "no-store" }),
+        fetch("/api/admin/phase-items", { cache: "no-store" }),
       ]);
       const ds = await rs.json().catch(() => ({}));
       const dt = await rt.json().catch(() => ({}));
