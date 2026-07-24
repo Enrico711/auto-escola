@@ -41,15 +41,24 @@ export default function Footer() {
             <ul className="mt-3 space-y-2 text-sm text-charcoal/70">
               <li>Campeche, Florianópolis, SC</li>
               <li>(48) 3238-6576</li>
+              <li><a href="/acompanhar" className="underline underline-offset-2 hover:text-ink">Acompanhar matrícula</a></li>
             </ul>
           </div>
         </div>
       </div>
 
       <div className="container-page mt-10 border-t border-charcoal/10 pt-6">
-        <p className="text-xs text-charcoal/45">
-          © {year} Auto Escola Sul da Ilha. Todos os direitos reservados.
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-charcoal/45">
+            © {year} Auto Escola Sul da Ilha. Todos os direitos reservados.
+          </p>
+          <a
+            href="/admin"
+            className="inline-flex w-fit items-center gap-1.5 rounded-full border border-charcoal/15 px-4 py-2 text-xs font-semibold text-charcoal/60 transition hover:border-charcoal/30 hover:text-ink"
+          >
+            Painel de gestão
+          </a>
+        </div>
       </div>
     </footer>
   );
