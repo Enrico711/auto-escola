@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
   getSupabase, isAuthed, supabaseConfigured,
-  friendlyError, notConfiguredMessage,
+  friendlyError, notConfiguredMessage, noStore
 } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 function guard() {
   const c = cookies().get("sdi_admin")?.value;
   if (!isAuthed(c)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: noStore });
   }
   if (!supabaseConfigured()) {
-    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500 });
+    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500, headers: noStore });
   }
   return null;
 }
@@ -24,11 +24,11 @@ export async function PATCH(req: Request, ctx: any) {
   try {
     const body = await req.json().catch(() => ({}));
     const allowed: any = {};
-    for (const k of ["name", "cpf", "phone", "address", "category", "notes", "current_phase"]) {
+    for (const k of ["name", "cpf", "phone", "address", "category", "notes", "current_phase", "total_value", "installments_total", "installments_paid", "cnh_expiry"]) {
       if (body[k] !== undefined) allowed[k] = body[k];
     }
     if (Object.keys(allowed).length === 0) {
-      return NextResponse.json({ error: "Nada para atualizar" }, { status: 400 });
+      return NextResponse.json({ error: "Nada para atualizar" }, { status: 400, headers: noStore });
     }
     const supabase = getSupabase();
     if (allowed.current_phase !== undefined) {
@@ -44,9 +44,9 @@ export async function PATCH(req: Request, ctx: any) {
       .select()
       .single();
     if (error) throw error;
-    return NextResponse.json({ student: data });
+    return NextResponse.json({ student: data }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }
 
@@ -64,8 +64,8 @@ export async function DELETE(req: Request, ctx: any) {
     }
     const { error } = await supabase.from("students").delete().eq("id", ctx.params.id);
     if (error) throw error;
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }

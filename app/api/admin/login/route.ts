@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { sessionToken, adminPassword } from "@/lib/server";
+import { sessionToken, adminPassword, noStore
+} from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
     );
   }
   if (typed !== expected) {
-    return NextResponse.json({ error: "Senha incorreta" }, { status: 401 });
+    return NextResponse.json({ error: "Senha incorreta" }, { status: 401, headers: noStore });
   }
   cookies().set("sdi_admin", sessionToken(), {
     httpOnly: true,
@@ -25,10 +26,10 @@ export async function POST(req: Request) {
     maxAge: 60 * 60 * 12,
     path: "/",
   });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true }, { headers: noStore });
 }
 
 export async function DELETE() {
   cookies().delete("sdi_admin");
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true }, { headers: noStore });
 }

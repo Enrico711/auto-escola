@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { adminPassword, getSupabase, supabaseConfigured } from "@/lib/server";
+import { adminPassword, getSupabase, supabaseConfigured, noStore
+} from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export async function GET() {
 
   if (!supabaseConfigured()) {
     result.detalhe = "Faltam as variáveis do Supabase no Vercel.";
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: noStore });
   }
 
   try {
@@ -47,5 +48,5 @@ export async function GET() {
     result.detalhe = "Erro ao conectar: " + String(err?.message || err);
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json(result, { headers: noStore });
 }

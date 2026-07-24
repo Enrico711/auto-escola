@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
   getSupabase, isAuthed, supabaseConfigured,
-  friendlyError, notConfiguredMessage,
+  friendlyError, notConfiguredMessage, noStore
 } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 function guard() {
   const c = cookies().get("sdi_admin")?.value;
   if (!isAuthed(c)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: noStore });
   }
   if (!supabaseConfigured()) {
-    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500 });
+    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500, headers: noStore });
   }
   return null;
 }
@@ -36,9 +36,9 @@ export async function GET(req: Request, ctx: any) {
         .createSignedUrl(d.path, 60 * 60);
       docs.push({ ...d, url: signed?.signedUrl || null });
     }
-    return NextResponse.json({ documents: docs });
+    return NextResponse.json({ documents: docs }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }
 
@@ -50,10 +50,10 @@ export async function POST(req: Request, ctx: any) {
     const file = form.get("file") as File | null;
     const label = (form.get("label") as string) || "Documento";
     if (!file || typeof file === "string") {
-      return NextResponse.json({ error: "Arquivo não enviado" }, { status: 400 });
+      return NextResponse.json({ error: "Arquivo não enviado" }, { status: 400, headers: noStore });
     }
     if (file.size === 0) {
-      return NextResponse.json({ error: "Arquivo vazio" }, { status: 400 });
+      return NextResponse.json({ error: "Arquivo vazio" }, { status: 400, headers: noStore });
     }
     if (file.size > 4 * 1024 * 1024) {
       return NextResponse.json(
@@ -75,9 +75,9 @@ export async function POST(req: Request, ctx: any) {
       .select()
       .single();
     if (error) throw error;
-    return NextResponse.json({ document: data });
+    return NextResponse.json({ document: data }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }
 
@@ -88,7 +88,7 @@ export async function DELETE(req: Request, ctx: any) {
     const { searchParams } = new URL(req.url);
     const docId = searchParams.get("docId");
     if (!docId) {
-      return NextResponse.json({ error: "docId obrigatório" }, { status: 400 });
+      return NextResponse.json({ error: "docId obrigatório" }, { status: 400, headers: noStore });
     }
     const supabase = getSupabase();
     const { data: doc } = await supabase
@@ -100,8 +100,8 @@ export async function DELETE(req: Request, ctx: any) {
       await supabase.storage.from("documentos").remove([doc.path]);
       await supabase.from("student_documents").delete().eq("id", docId);
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }

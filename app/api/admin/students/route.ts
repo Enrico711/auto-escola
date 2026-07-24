@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
   getSupabase, isAuthed, generateTrackingCode,
-  supabaseConfigured, friendlyError, notConfiguredMessage,
+  supabaseConfigured, friendlyError, notConfiguredMessage, noStore
 } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 function guard() {
   const c = cookies().get("sdi_admin")?.value;
   if (!isAuthed(c)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: noStore });
   }
   if (!supabaseConfigured()) {
-    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500 });
+    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500, headers: noStore });
   }
   return null;
 }
@@ -28,9 +28,9 @@ export async function GET() {
       .select("*")
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return NextResponse.json({ students: data || [] });
+    return NextResponse.json({ students: data || [] }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }
 
@@ -66,13 +66,17 @@ export async function POST(req: Request) {
         address: body.address || null,
         category: body.category || null,
         notes: body.notes || null,
+        total_value: body.total_value === "" || body.total_value === undefined ? null : Number(body.total_value),
+        installments_total: body.installments_total ? Number(body.installments_total) : 6,
+        installments_paid: 0,
+        cnh_expiry: body.cnh_expiry || null,
         current_phase: 0,
       })
       .select()
       .single();
     if (error) throw error;
-    return NextResponse.json({ student: data });
+    return NextResponse.json({ student: data }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }

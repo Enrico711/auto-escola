@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getSupabase, PHASES, supabaseConfigured,
-  friendlyError, notConfiguredMessage,
+  friendlyError, notConfiguredMessage, noStore
 } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +9,10 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request, ctx: any) {
   const code = String(ctx.params.code || "").toUpperCase().trim();
   if (!code) {
-    return NextResponse.json({ error: "Código inválido" }, { status: 400 });
+    return NextResponse.json({ error: "Código inválido" }, { status: 400, headers: noStore });
   }
   if (!supabaseConfigured()) {
-    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500 });
+    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500, headers: noStore });
   }
   try {
     const supabase = getSupabase();
@@ -23,7 +23,7 @@ export async function GET(req: Request, ctx: any) {
       .maybeSingle();
     if (error) throw error;
     if (!data) {
-      return NextResponse.json({ error: "Matrícula não encontrada" }, { status: 404 });
+      return NextResponse.json({ error: "Matrícula não encontrada" }, { status: 404, headers: noStore });
     }
 
     const firstName = String(data.name || "").split(" ")[0];
@@ -73,8 +73,8 @@ export async function GET(req: Request, ctx: any) {
       appointment,
       info: setting || null,
       items: items || [],
-    });
+    }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }

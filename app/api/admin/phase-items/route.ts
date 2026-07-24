@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
   getSupabase, isAuthed, supabaseConfigured,
-  friendlyError, notConfiguredMessage, PHASES,
+  friendlyError, notConfiguredMessage, PHASES, noStore
 } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 function guard() {
   const c = cookies().get("sdi_admin")?.value;
   if (!isAuthed(c)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: noStore });
   }
   if (!supabaseConfigured()) {
-    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500 });
+    return NextResponse.json({ error: notConfiguredMessage() }, { status: 500, headers: noStore });
   }
   return null;
 }
@@ -28,9 +28,9 @@ export async function GET() {
       .select("*")
       .order("created_at", { ascending: true });
     if (error) throw error;
-    return NextResponse.json({ items: data || [] });
+    return NextResponse.json({ items: data || [] }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }
 
@@ -42,10 +42,10 @@ export async function POST(req: Request) {
     const phase = Number(body.phase);
     const label = String(body.label || "").trim();
     if (isNaN(phase) || phase < 0 || phase >= PHASES.length) {
-      return NextResponse.json({ error: "Etapa inválida" }, { status: 400 });
+      return NextResponse.json({ error: "Etapa inválida" }, { status: 400, headers: noStore });
     }
     if (!label) {
-      return NextResponse.json({ error: "Informe o nome do item" }, { status: 400 });
+      return NextResponse.json({ error: "Informe o nome do item" }, { status: 400, headers: noStore });
     }
     const supabase = getSupabase();
     const { data, error } = await supabase
@@ -59,9 +59,9 @@ export async function POST(req: Request) {
       .select()
       .single();
     if (error) throw error;
-    return NextResponse.json({ item: data });
+    return NextResponse.json({ item: data }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }
 
@@ -71,12 +71,12 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400, headers: noStore });
     const supabase = getSupabase();
     const { error } = await supabase.from("phase_items").delete().eq("id", id);
     if (error) throw error;
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: noStore });
   } catch (err) {
-    return NextResponse.json({ error: friendlyError(err) }, { status: 500 });
+    return NextResponse.json({ error: friendlyError(err) }, { status: 500, headers: noStore });
   }
 }

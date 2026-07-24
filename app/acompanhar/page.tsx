@@ -53,7 +53,9 @@ export default function AcompanharPage() {
     setLoading(true);
     setError("");
     setResult(null);
-    const res = await fetch(`/api/tracking/${encodeURIComponent(clean)}`);
+    const res = await fetch(`/api/tracking/${encodeURIComponent(clean)}`, {
+      cache: "no-store",
+    });
     const data = await res.json();
     setLoading(false);
     if (!res.ok) {
